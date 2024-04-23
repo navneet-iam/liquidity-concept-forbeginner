@@ -28,34 +28,9 @@ contract SimpleAMM {
     constructor(string memory CoinA, string memory CoinB, uint256 _reserve1, uint256 _reserve2) {
         reserves[CoinA][CoinB] = PairReserve(_reserve1, _reserve2);
     }
-    
-    // Function to add liquidity to the pool
-    function addLiquidity(string memory CoinA, string memory CoinB, uint256 amount1, uint256 amount2) external {
-        require(amount1 > 0 && amount2 > 0, "Amount must be greater than 0");
-        PairReserve storage pairReserve = reserves[CoinA][CoinB];
-        // Check if provided liquidity maintains the ratio
-        uint256 newReserve1 = pairReserve.reserve1 + amount1;
-        uint256 newReserve2 = pairReserve.reserve2 + amount2;
-        require((newReserve1 * pairReserve.reserve2) == (pairReserve.reserve1 * newReserve2), "Liquidity must maintain ratio");
-        pairReserve.reserve1 = newReserve1;
-        pairReserve.reserve2 = newReserve2;
-        emit LiquidityAdded(CoinA, CoinB, msg.sender, amount1, amount2);
-    }
 
-    // Function to remove liquidity from the pool
-    function removeLiquidity(string memory CoinA, string memory CoinB, uint256 liquidity) external {
-        require(liquidity > 0, "Liquidity must be greater than 0");
-        PairReserve storage pairReserve = reserves[CoinA][CoinB];
-        // Calculate amounts of CoinA and CoinB to withdraw based on liquidity
-        uint256 amount1 = (liquidity * pairReserve.reserve1) / (pairReserve.reserve1 + pairReserve.reserve2);
-        uint256 amount2 = (liquidity * pairReserve.reserve2) / (pairReserve.reserve1 + pairReserve.reserve2);
-        pairReserve.reserve1 -= amount1;
-        pairReserve.reserve2 -= amount2;
-        emit LiquidityRemoved(CoinA, CoinB, msg.sender, amount1, amount2);
-    }
-
-    // Function to calculate the amount of CoinB received for a given amount of CoinA
-    function getAmountOut(string memory CoinA, string memory CoinB, uint256 amountIn) external view returns (uint256) {
+        // Function to calculate the amount of CoinB received for a given amount of CoinA
+    function getAmountOut(string memory CoinA, string memory CoinB, uint256 amountIn) public view returns (uint256) {
         require(amountIn > 0, "Amount must be greater than 0");
         PairReserve storage pairReserve = reserves[CoinA][CoinB];
         // Calculate amount of CoinB based on constant product formula
@@ -69,6 +44,43 @@ contract SimpleAMM {
         // Calculate amount of CoinA based on constant product formula
         return (pairReserve.reserve1 * amountOut) / pairReserve.reserve2;
     }
+    
+    // Function to add liquidity to the pool
+    // Function to add liquidity to the pool
+function addLiquidity(string memory CoinA, string memory CoinB, uint256 amount1, uint256 amount2) external {
+    require(amount1 > 0 && amount2 > 0, "Amount must be greater than 0");
+    PairReserve storage pairReserve = reserves[CoinA][CoinB];
+
+    // Check if provided liquidity maintains the ratio
+    uint256 amount2rr = getAmountOut(CoinA, CoinB, amount1);
+    uint256 newReserve1 = pairReserve.reserve1 + amount1;
+    uint256 newReserve2 = pairReserve.reserve2 + amount2rr;
+    require((newReserve1 * pairReserve.reserve2) == (pairReserve.reserve1 * newReserve2), "Liquidity must maintain ratio");
+    
+    // Update reserves
+    pairReserve.reserve1 = newReserve1;
+    pairReserve.reserve2 = newReserve2;
+    
+    emit LiquidityAdded(CoinA, CoinB, msg.sender, amount1, amount2rr);
+}
+
+
+    // Function to remove liquidity from the pool
+function removeLiquidity(string memory CoinA, string memory CoinB, uint256 liquidity) external {
+    require(liquidity > 0, "Liquidity must be greater than 0");
+    PairReserve storage pairReserve = reserves[CoinA][CoinB];
+    
+    // Calculate amounts of CoinA and CoinB to withdraw based on liquidity
+    uint256 amount1 = (liquidity * pairReserve.reserve1) / (pairReserve.reserve1 + pairReserve.reserve2);
+    uint256 amount2 = (liquidity * pairReserve.reserve2) / (pairReserve.reserve1 + pairReserve.reserve2);
+    
+    // Update reserves
+    pairReserve.reserve1 -= amount1;
+    pairReserve.reserve2 -= amount2;
+    
+    emit LiquidityRemoved(CoinA, CoinB, msg.sender, amount1, amount2);
+}
+
 
     // Function to update reserves
     function updateReserves(string memory CoinA, string memory CoinB, uint256 amountIn, uint256 amountOut, uint256 flag) external {
@@ -88,6 +100,14 @@ contract SimpleAMM {
     function getReserves(string memory CoinA, string memory CoinB) public view returns (uint256 reserve1, uint256 reserve2) {
         PairReserve storage pairReserve = reserves[CoinA][CoinB];
         return (pairReserve.reserve1, pairReserve.reserve2);
+    }
+
+    function getamountfromLiquidity(string memory CoinA, string memory CoinB, uint256 liquidity) public view returns (uint256 amount1, uint256 amount2) {
+            PairReserve storage pairReserve = reserves[CoinA][CoinB];
+    // Calculate amounts of CoinA and CoinB to withdraw based on liquidity
+    amount1 = (liquidity * pairReserve.reserve1) / (pairReserve.reserve1 + pairReserve.reserve2);
+    amount2 = (liquidity * pairReserve.reserve2) / (pairReserve.reserve1 + pairReserve.reserve2);
+    return (amount1, amount2);
     }
 
 }
@@ -163,6 +183,10 @@ contract CryptoSwap {
         require(amount1 > 0 && amount2 > 0, "Amount must be greater than 0");
         address liquidityPool = liquidityPools[CoinA][CoinB];
         require(liquidityPool != address(0), "Liquidity pool does not exist");
+            // Transfer CoinA and CoinB tokens from the user to the contract
+    require(tokenInstanceMap[CoinA].transferFrom(msg.sender, address(this), amount1), "Transfer of CoinA failed");
+    require(tokenInstanceMap[CoinB].transferFrom(msg.sender, address(this), amount2), "Transfer of CoinB failed");
+
         SimpleAMM(liquidityPool).addLiquidity(CoinA, CoinB, amount1, amount2);
     }
     
@@ -171,6 +195,13 @@ contract CryptoSwap {
         require(liquidity > 0, "Liquidity must be greater than 0");
         address liquidityPool = liquidityPools[CoinA][CoinB];
         require(liquidityPool != address(0), "Liquidity pool does not exist");
+
+        (uint256 amount1, uint256 amount2) = SimpleAMM(liquidityPool).getamountfromLiquidity(CoinA, CoinB, liquidity);
+
+         // Transfer CoinA and CoinB tokens to the user
+    require(tokenInstanceMap[CoinA].transfer(msg.sender, amount1), "Transfer of CoinA failed");
+    require(tokenInstanceMap[CoinB].transfer(msg.sender, amount2), "Transfer of CoinB failed");
+
         SimpleAMM(liquidityPool).removeLiquidity(CoinA, CoinB, liquidity);
     }
     
